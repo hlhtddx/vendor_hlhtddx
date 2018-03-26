@@ -23,6 +23,9 @@ $(PRODUCT_INFO_JSON):
 product-module-dot: $(PRODUCT_INFO_JSON) $(MODULE_INFO_JSON) $(MODULE_DEPS_JSON)
 	@echo Generating $@
 	$(hide) python ${VENDOR_TOOL_PATH}/product_deps_graph.py
+	$(hide) python ${VENDOR_TOOL_PATH}/product_deps_graph.py -t exe
+	$(hide) python ${VENDOR_TOOL_PATH}/product_deps_graph.py -t apk
+	$(hide) python ${VENDOR_TOOL_PATH}/product_deps_graph.py -t etc
 
 $(PRODUCT_OUT)/module-apk.dot: product-module-dot
 $(PRODUCT_OUT)/module-apk.svg: $(PRODUCT_OUT)/module-apk.dot
@@ -45,9 +48,7 @@ $(PRODUCT_OUT)/product-$(1).svg: $(PRODUCT_OUT)/product-$(1).dot
 my_dbg_files: $(PRODUCT_OUT)/product-$(1).svg
 endef
 
-$(foreach m, apk exe etc, \
-  $(call generate_product_module_graph($$m)) \
-  )
+$(foreach m,apk exe etc,$(call generate_product_module_graph($m)))
 
 # If ONE_SHOT_MAKEFILE is set, our view of the world is smaller, so don't
 # rewrite the file in that came.

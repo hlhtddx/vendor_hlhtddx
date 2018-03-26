@@ -4,70 +4,148 @@ import json
 import os
 import sys
 
-class AndroidProduct:
-    def __init__(self, file_dir):
-        f_module_info = open('%s%smodule-info.json' % (file_dir, os.sep), mode = "r")
-        f_module_deps = open('%s%smodule-deps.json' % (file_dir, os.sep), mode = "r")
-        f_product_info = open('%s%sproduct-info.json' % (file_dir, os.sep), mode = "r")
-        self.root_module_info = json.load(f_module_info)
-        self.root_module_deps = json.load(f_module_deps)
-        self.root_product_info = json.load(f_product_info)
+class Target:
+    def __init__(self):
+        self.arch = ""
+        self.type = ""
+        self.target = ""
 
-        self.product_out = self.root_product_info['product_out'] + '/';
-        self.host_out = self.root_product_info['host_out'] + '/';
+class Module:
+    incremental = 0
 
-        self.targets_etc = {}
-        self.depends_etc = {}
+    def __init__(self, product, name):
+        self.id = Module.incremental
+        Module.incremental = Module.incremental + 1
+        self.product = product
+        self.name = name
+        self.path = ""
+        self.targets = []
+        self.depends = []
+    
+    @classmethod
+    def reset(cls):
+        cls.incremental = 0
 
-        self.targets_apk = {}
-        self.depends_apk = {}
+    def getArch(self, path, is32Bit):
+        if path.startswith(self.product.host_out):
+            if(is32Bit):
+                return "host32"
+            else:
+                return "host64"
+        else:
+            if(is32Bit):
+                return "target32"
+            else:
+                return "target64"
 
-        self.targets_exe = {}
-        self.depends_exe = {}
+    def addSingleTarget(self, types, paths):
+        '''Multiple target paths for one type'''
+        is32Bit = False
+        if self.name.endswith('_32'): #32bit modules
+            is32Bit = True
 
-        self.targets_test = {}
-        self.depends_test = {}
+        for path in paths:
+            target = Target()
+            target.arch = self.getArch(path, is32Bit)
+            target.type = types[0]
+            target.target = path
+            self.targets.append(target)
 
-        self.targets = {}
-        self.depends = {}
+    def addMultiTargets(self, types, paths):
+        '''Multiple target paths for multiple types'''
+        for index in range(0, len(types)):
+            path = paths[index]
+            target = Target()
+            target.arch = self.getArch(path, path.startswith(self.product.host_out))
+            target.type = types[index]
+            target.target = path
+            self.targets.append(target)
+
+    def parse(self, module):
+        types = module['class']
+        paths = module['installed']
+
+        if len(paths) == 0:
+            if (len(types) != 1 or not (types[0] in Product.non_installed_classes)) \
+                and not self.name.endswith('.vendor'):
+                sys.stderr.write("Warning: %s has no target path\n" % self.name)
+                return
+
+        types = [type for type in types if not (type == 'STATIC_LIBRARIES')]
+        paths = [path.replace(self.product.product_out, '') for path in paths]
+
+        self.path = module['path']
+
+        if len(types) > 1 and len(paths) != len(types):
+            sys.stderr.write('Warning: types > 1 and paths != types:\tname : %s\n\ttypes : %s\n\tpaths : %s\n' % (self.name, types, paths))
         
+        assert(len(types) == 1 or len(paths) == len(types))
+
+        if len(types) == 1:
+            self.addSingleTarget(types, paths)
+        else:
+            self.addMultiTargets(types, paths)
+
+    def parseDepends(self, dependencies):
+        for dependant in dependencies:
+            if not self.product.module_map.has_key(dependant):
+                continue
+            if dependant in Product.ignore_module:
+                continue
+
+            dep_module = self.product.module_map[dependant]
+            self.depends.append(dep_module)
+
+
+class Dependency:
+
+    DIRECT_DEPENDS = 1
+    INDIRECT_DEPENDS = 2
+    BOTH_DEPENDS = DIRECT_DEPENDS | INDIRECT_DEPENDS
+    
+    def __init__(self, product):
+        self.dependency_map = {}
+        self.targets = {}
+        self.module_map = product.module_map
+
+    def addDependsForTarget(self, base):
+        name = base.name
+        self.targets[name] = base
+        for dep_module in base.depends:
+            dependant = dep_module.name
+            self.targets[dependant] = dep_module
+            relation = Dependency.DIRECT_DEPENDS
+            if (self.dependency_map.has_key((name, dependant))):
+                relation = relation | self.dependency_map[(name, dependant)]
+            self.dependency_map[(name, dependant)] = relation
+            self.addIndirectDepend(base, dep_module)
+
+    def addIndirectDepend(self, base, dep_module):
+        for depends_ind in dep_module.depends:
+            name = base.name
+            dname = depends_ind.name
+            relation = Dependency.INDIRECT_DEPENDS
+            if (self.dependency_map.has_key((name, dname))):
+                relation = relation | self.dependency_map[(name, dname)]
+            self.dependency_map[(name, dname)] = relation
+
+class Product:
+    def __init__(self, file_dir):
+        self.file_dir = file_dir
+
+        f_product_info = open('%s%sproduct-info.json' % (self.file_dir, os.sep), mode = "r")
+        self.root_product_info = json.load(f_product_info)
+        f_product_info.close()
+
+        self.product_out = self.root_product_info['product_out'] + '/'
+        self.host_out = self.root_product_info['host_out'] + '/'
 
     ignore_module = ('libc', 'libc++', 'libm', 'libdl', 'libcutils', 'framework', 'ext', 'okhttp', 'core-oj', 'core-libart')
+    non_installed_classes = ('STATIC_LIBRARIES', 'JAVA_LIBRARIES', 'HEADER_LIBRARIES', 'FAKE')
 
-    def addIndirectDepend(self, depends, base, dependant):
-        try:
-            indirect_dependants = self.root_module_deps[dependant]
-            for indirect_dependant in indirect_dependants['deps']:
-                if (depends.has_key((base, indirect_dependant))):
-                    depends[(base, indirect_dependant)] = depends[(base, indirect_dependant)] | 2
-                else:
-                    depends[(base, indirect_dependant)] = 2 #indirect dependency
-        except KeyError:
-            sys.stderr.write("Module %s is not found\n" % dependant)
+    def outputDot(self, file, depends):
+        targets = depends.targets
 
-    def addDirectDepend(self, targets, depends, name, module):
-        try:
-            dependants = self.root_module_deps[name]
-            targets[name] = 1
-            for dependant in dependants['deps']:
-
-                if not self.root_module_info.has_key(dependant):
-                    continue
-                if len(self.root_module_info[dependant]['installed']) == 0:
-                    continue
-                if dependant in AndroidProduct.ignore_module:
-                    continue
-                    
-                targets[dependant] = 1
-                if (depends.has_key((name, dependant))):
-                    depends[(name, dependant)] = depends[(name, dependant)] | 1
-                else:
-                    depends[(name, dependant)] = 1
-                self.addIndirectDepend(depends, name, dependant)
-        except KeyError:
-            sys.stderr.write("Module %s is not found\n" % name)
-
-    def outputDot(self, file, targets, depends):
         file.write('digraph {\n')
         file.write('graph [ ratio=.5 ];\n')
         if (len(targets) == 0):
@@ -77,135 +155,136 @@ class AndroidProduct:
         k.sort()
         for m in k:
             try:
-                module = self.root_module_info[m]
                 file.write('\t\"%s\" [ label=\"%s\" colorscheme=\"svg\" fontcolor=\"darkblue\" href=\"%s\" ]\n'
                     % (m, m, m))
             except KeyError as err:
                 sys.stderr.write('outputDot error: "%s"\n' % err.message)
 
-        p = depends.keys()
+        dependency_map = depends.dependency_map
+        p = dependency_map.keys()
         for (m, d) in p:
-            if(depends[(m, d)] == 1):
+            if(dependency_map[(m, d)] == Dependency.DIRECT_DEPENDS):
                 file.write('\t\"%s\" -> \"%s\"\n' % (m, d))
 
         file.write('}')
 
-    def outputOneDot(self, file_dir, type, targets, depends):
-        file = open('%s%smodule-%s.dot' % (file_dir, os.sep, type), 'w')
-        self.outputDot(file, targets, depends)
+    def outputOneDot(self, depends):
+        file = open('%s%smodule-%s.dot' % (self.file_dir, os.sep, result_type), 'w')
+        self.outputDot(file, depends)
         file.close()
 
-    def outputAllDot(self, file_dir):
-        self.outputOneDot(file_dir, 'apk', self.targets_apk, self.depends_apk)
-        self.outputOneDot(file_dir, 'exe', self.targets_exe, self.depends_exe)
-        self.outputOneDot(file_dir, 'etc', self.targets_etc, self.depends_etc)
-        self.outputOneDot(file_dir, 'test', self.targets_test, self.depends_test)
-        self.outputOneDot(file_dir, 'all', self.targets, self.depends)
-
-    def outputCsv(self, file, file_deps, targets, depends):
-        file.write('name,type,source-path,install-path\n')
+    def outputCsv(self, file, file_deps, depends):
+        file.write('name,type,source-path,arch,host,installed-path\n')
+        targets = depends.targets
         k = targets.keys()
         k.sort()
-        for m in k:
-            try:
-                module = self.root_module_info[m]
-                types = module['class']
-                paths = module['installed']
-                if len(types) != len(paths):
-                    sys.stderr.write("len(types) != len(paths), Module name=%s\n" % m)
-                    assert(len(types) == len(paths))
-                for index in range(0, len(types)):
-                    file.write('%s,%s,%s,%s\n' % (m, types[index], module['path'][0], paths[index]))
-            except KeyError as err:
-                sys.stderr.write('outputCsv error: "%s"\n' % err.message)
+        for key in k:
+            module = targets[key]
+            name = module.name
+            for target in module.targets:
+                file.write('%s,%s,%s,%s,%s,%s\n' % (name, target.type, module.path, target.arch, target.type, target.target))
 
         file_deps.write('base,dependant\n')
-        k = depends.keys()
+        dependency_map = depends.dependency_map
+        k = dependency_map.keys()
         for d in k:
             try:
-                v = depends[d]
-                if(v == 1):
+                v = dependency_map[d]
+                if (v & Dependency.DIRECT_DEPENDS) == Dependency.DIRECT_DEPENDS:
                     file_deps.write('%s,%s\n' % (d))
             except KeyError as err:
                 sys.stderr.write('outputCsv error: "%s"\n' % err.message)
-            
 
-    def outputOneCsv(self, file_dir, type, targets, depends):
-        file = open('%s%smodule-%s.csv' % (file_dir, os.sep, type), 'w')
-        file_deps = open('%s%sdepend-%s.csv' % (file_dir, os.sep, type), 'w')
-        self.outputCsv(file, file_deps, targets, depends)
+    def outputOneCsv(self, depends):
+        file = open('%s%smodule-%s.csv' % (self.file_dir, os.sep, result_type), 'w')
+        file_deps = open('%s%sdepend-%s.csv' % (self.file_dir, os.sep, result_type), 'w')
+        self.outputCsv(file, file_deps, depends)
         file_deps.close()
         file.close()
 
-    def outputAllCsv(self, file_dir):
-        self.outputOneCsv(file_dir, 'apk', self.targets_apk, self.depends_apk)
-        self.outputOneCsv(file_dir, 'exe', self.targets_exe, self.depends_exe)
-        self.outputOneCsv(file_dir, 'etc', self.targets_etc, self.depends_etc)
-        self.outputOneCsv(file_dir, 'test', self.targets_test, self.depends_test)
-        self.outputOneCsv(file_dir, 'all', self.targets, self.depends)
+    def paserModules(self):
+        f_module_info = open('%s%smodule-info.json' % (self.file_dir, os.sep), mode = "r")
+        root_module_info = json.load(f_module_info)
+        f_module_info.close()
 
-    def removeUselessTarget(self):
-        k = self.root_module_info.keys()
-        for m in k:
-            module = self.root_module_info[m]
+        self.module_map = {}
 
-            paths = module['installed']
-            module['installed'] = [path.replace(self.product_out, '') for path in paths
-             if not (path.endswith('.prof') or path.endswith('.odex') or path.endswith('.vdex') or path.endswith('art') or path.endswith('.rc') or path.endswith('64') or path.startswith('out/host'))]
-                
-            types = module['class']
-            if len(types) > 1:
-                module['class'] = [type for type in types
-                if not (type == 'STATIC_LIBRARIES')]
-            
-            if len(module['installed']) == 0:
-                self.root_module_info.pop(m)
+        k = root_module_info.keys()
+        for name in k:
+            module = Module(self, name)
+            module.parse(root_module_info[name])
+            self.module_map[name] = module
 
-    def parse(self, file_dir):
+    def parseDepends(self):
+        f_module_deps = open('%s%smodule-deps.json' % (self.file_dir, os.sep), mode = "r")
+        root_module_deps = json.load(f_module_deps)
+        f_module_deps.close()
+        k = root_module_deps.keys()
+        for name in k:
+            base = root_module_deps[name]
+            dependencies = base['deps']
+            if len(dependencies) > 0 and self.module_map.has_key(name):
+                module = self.module_map[name]
+                module.parseDepends(dependencies)
 
-        self.removeUselessTarget()
+    def parseProduct(self):
         packages = self.root_product_info["packages"]
 
+        depends = Dependency(self)
+
+        global result_type
+
         for package_name in packages:
-            if(not self.root_module_info.get(package_name)):
+            if(not self.module_map.has_key(package_name)):
                 continue
 
-            if package_name in AndroidProduct.ignore_module:
-                continue
+            module = self.module_map[package_name]
+            for t in module.targets:
+                if (result_type == 'etc' and t.type != 'ETC'):
+                    continue
+                elif (result_type == 'app' and t.type != 'APPS'):
+                    continue
+                elif (result_type == 'exe' and t.type != 'EXECUTABLES'):
+                    continue
+                elif (result_type == 'test' and t.type != 'NATIVE_TESTS'):
+                    continue
+                depends.addDependsForTarget(module)
 
-            m = self.root_module_info[package_name]
-            classtype = m['class'][0]
+        return depends
 
-            if (classtype == 'ETC'):
-                self.addDirectDepend(self.targets_etc, self.depends_etc, package_name, m)
-            elif (classtype == 'APPS'):
-                self.addDirectDepend(self.targets_apk, self.depends_apk, package_name, m)
-            elif (classtype == 'EXECUTABLES'):
-                self.addDirectDepend(self.targets_exe, self.depends_exe, package_name, m)
-            elif (classtype == 'NATIVE_TESTS'):
-                self.addDirectDepend(self.targets_test, self.depends_test, package_name, m)
-
-            self.addDirectDepend(self.targets, self.depends, package_name, m)
+    def parse(self, file_dir):
+        self.paserModules()
+        self.parseDepends()
+        depends = self.parseProduct()
         
-        self.outputAllDot(file_dir)
-        self.outputAllCsv(file_dir)
-        
+        self.outputOneDot(depends)
+        self.outputOneCsv(depends)
+
+
+
+def parse_options():
+    global result_type, file_dir
+    result_type = "all"
+    file_dir = os.environ["ANDROID_PRODUCT_OUT"]
+    for i in range(1, len(sys.argv)):
+        if sys.argv[i] == '-c':
+            i = i + 1
+            file_dir = sys.argv[i]
+        elif sys.argv[i] == '-t':
+            i = i + 1
+            result_type = sys.argv[i]
 
 def main():
+    global file_dir
     if(__name__ == '__main__') :
-        file_dir = ""
-
-        if ( len(sys.argv) > 1) :
-            file_dir = sys.argv[1]
-        else:
-            file_dir = os.environ["ANDROID_PRODUCT_OUT"]
+        parse_options()
 
         if(file_dir == ''):
             sys.stderr.write('Source directory MUST be set by argument or $ANDROID_PRODUCT_OUT!\n')
             return -1
 
         sys.stderr.write('Parsing directory "%s"\n' % file_dir)
-        p = AndroidProduct(file_dir)
+        p = Product(file_dir)
         p.parse(file_dir)
 
     return 0
