@@ -4,6 +4,14 @@ import json
 import os
 import sys
 
+class AndroidModule:
+    def __init__(self):
+        self.name = ""
+        self.arch = ""
+        self.type = ""
+        self.target = ""
+        self.depends = ""
+
 class AndroidProduct:
     def __init__(self, file_dir):
         f_module_info = open('%s%smodule-info.json' % (file_dir, os.sep), mode = "r")
@@ -13,8 +21,8 @@ class AndroidProduct:
         self.root_module_deps = json.load(f_module_deps)
         self.root_product_info = json.load(f_product_info)
 
-        self.product_out = self.root_product_info['product_out'] + '/';
-        self.host_out = self.root_product_info['host_out'] + '/';
+        self.product_out = self.root_product_info['product_out'] + '/'
+        self.host_out = self.root_product_info['host_out'] + '/'
 
         self.targets_etc = {}
         self.depends_etc = {}
@@ -30,7 +38,6 @@ class AndroidProduct:
 
         self.targets = {}
         self.depends = {}
-        
 
     ignore_module = ('libc', 'libc++', 'libm', 'libdl', 'libcutils', 'framework', 'ext', 'okhttp', 'core-oj', 'core-libart')
 
@@ -77,7 +84,6 @@ class AndroidProduct:
         k.sort()
         for m in k:
             try:
-                module = self.root_module_info[m]
                 file.write('\t\"%s\" [ label=\"%s\" colorscheme=\"svg\" fontcolor=\"darkblue\" href=\"%s\" ]\n'
                     % (m, m, m))
             except KeyError as err:
@@ -112,8 +118,8 @@ class AndroidProduct:
                 types = module['class']
                 paths = module['installed']
                 if len(types) != len(paths):
-                    sys.stderr.write("len(types) != len(paths), Module name=%s\n" % m)
-                    assert(len(types) == len(paths))
+                    sys.stderr.write("len(types) != len(paths), Module name=%s, types=%s, paths=%s\n" % (m, types, paths))
+                    assert(len(types) == len(paths) or len(types) == 1)
                 for index in range(0, len(types)):
                     file.write('%s,%s,%s,%s\n' % (m, types[index], module['path'][0], paths[index]))
             except KeyError as err:
@@ -149,17 +155,29 @@ class AndroidProduct:
         for m in k:
             module = self.root_module_info[m]
 
-            paths = module['installed']
-            module['installed'] = [path.replace(self.product_out, '') for path in paths
-             if not (path.endswith('.prof') or path.endswith('.odex') or path.endswith('.vdex') or path.endswith('art') or path.endswith('.rc') or path.endswith('64') or path.startswith('out/host'))]
-                
-            types = module['class']
-            if len(types) > 1:
-                module['class'] = [type for type in types
-                if not (type == 'STATIC_LIBRARIES')]
-            
-            if len(module['installed']) == 0:
+            types = [type for type in module['class'] if not (type == 'STATIC_LIBRARIES')]
+            paths = [path.replace(self.product_out, '') for path in module['installed']]
+
+            if len(paths) == 0:
                 self.root_module_info.pop(m)
+                continue
+
+            dump_module = False                
+            if len(types) > 1:
+                sys.stderr.write('Warning: types > 1:\n')
+                dump_module = True
+
+            if len(paths) != len(types):
+                sys.stderr.write('Warning: paths != types:\n')
+                dump_module = True
+
+            if dump_module:
+                sys.stderr.write('\tname : %s\n\ttypes : %s\n\tpaths : %s\n' % (m, types, paths))
+            
+            assert(len(types) == 1 or len(paths) == len(types))
+
+            module['class'] = types
+            module['installed'] = paths
 
     def parse(self, file_dir):
 
