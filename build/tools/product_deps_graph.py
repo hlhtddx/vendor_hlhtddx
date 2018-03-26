@@ -4,17 +4,138 @@ import json
 import os
 import sys
 
-class AndroidProduct:
-    def __init__(self, file_dir):
-        f_module_info = open('%s%smodule-info.json' % (file_dir, os.sep), mode = "r")
-        f_module_deps = open('%s%smodule-deps.json' % (file_dir, os.sep), mode = "r")
-        f_product_info = open('%s%sproduct-info.json' % (file_dir, os.sep), mode = "r")
-        self.root_module_info = json.load(f_module_info)
-        self.root_module_deps = json.load(f_module_deps)
-        self.root_product_info = json.load(f_product_info)
+class Target:
+    def __init__(self):
+        self.arch = ""
+        self.type = ""
+        self.target = ""
 
-        self.product_out = self.root_product_info['product_out'] + '/';
-        self.host_out = self.root_product_info['host_out'] + '/';
+class Module:
+    incremental = 0
+
+    def __init__(self, product, name):
+        self.id = Module.incremental
+        Module.incremental = Module.incremental + 1
+        self.product = product
+        self.name = name
+#        self.depends = {}
+    
+    @classmethod
+    def reset(cls):
+        cls.incremental = 0
+
+    def getArch(self, path, is32Bit):
+        if path.startswith(self.product.host_out):
+            if(is32Bit):
+                return "host32"
+            else:
+                return "host64"
+        else:
+            if(is32Bit):
+                return "target32"
+            else:
+                return "target64"
+
+    def addSingleTarget(self, types, paths):
+        '''Multiple target paths for one type'''
+        is32Bit = False
+        if self.name.endswith('_32'): #32bit modules
+            is32Bit = True
+
+        for path in paths:
+            target = Target()
+            target.arch = self.getArch(path, is32Bit)
+            target.type = types[0]
+            target.target = path
+
+    def addMultiTargets(self, types, paths):
+        '''Multiple target paths for multiple types'''
+        for index in range(0, len(types)):
+            path = paths[index]
+            target = Target()
+            target.arch = self.getArch(path, path.startswith(self.product.host_out))
+            target.type = types[index]
+            target.target = path
+
+    def parse(self, module):
+        types = [type for type in module['class'] if not (type == 'STATIC_LIBRARIES')]
+        paths = [path.replace(self.product.product_out, '') for path in module['installed']]
+
+        if len(paths) == 0:
+            sys.stderr.write("Warning: %s has no target path\n" % self.name)
+            return
+
+        dump_module = False
+        if len(types) > 1:
+            sys.stderr.write('Warning: types > 1:\n')
+            dump_module = True
+
+        if len(paths) != len(types):
+            sys.stderr.write('Warning: paths != types:\n')
+            dump_module = True
+
+        if dump_module:
+            sys.stderr.write('\tname : %s\n\ttypes : %s\n\tpaths : %s\n' % (self.name, types, paths))
+        
+        assert(len(types) == 1 or len(paths) == len(types))
+
+        if len(types) == 1:
+            self.addSingleTarget(types, paths)
+        else:
+            self.addMultiTargets(types, paths)
+
+class Dependency:
+    def __init__(self, product):
+        self.dependency_map = {}
+        self.product = product
+
+    def parse(self, base, dependencies):
+        for dependant in dependencies:
+            pass
+
+    def addIndirectDepend(self, base, dependant):
+        try:
+            indirect_dependants = self.root_module_deps[dependant]
+            for indirect_dependant in indirect_dependants['deps']:
+                if (self.dependency_map.has_key((base, indirect_dependant))):
+                    self.dependency_map[(base, indirect_dependant)] = self.dependency_map[(base, indirect_dependant)] | 2
+                else:
+                    self.dependency_map[(base, indirect_dependant)] = 2 #indirect dependency
+        except KeyError:
+            sys.stderr.write("Module %s is not found\n" % dependant)
+
+    def addDirectDepend(self, targets, name, module):
+        try:
+            dependants = self.root_module_deps[name]
+            targets[name] = 1
+            for dependant in dependants['deps']:
+
+                if not self.root_module_info.has_key(dependant):
+                    continue
+                if len(self.root_module_info[dependant]['installed']) == 0:
+                    continue
+                if dependant in Product.ignore_module:
+                    continue
+                    
+                targets[dependant] = 1
+                if (self.dependency_map.has_key((name, dependant))):
+                    self.dependency_map[(name, dependant)] = self.dependency_map[(name, dependant)] | 1
+                else:
+                    self.dependency_map[(name, dependant)] = 1
+                self.addIndirectDepend(self.dependency_map, name, dependant)
+        except KeyError:
+            sys.stderr.write("Module %s is not found\n" % name)
+
+class Product:
+    def __init__(self, file_dir):
+        self.file_dir = file_dir
+
+        f_product_info = open('%s%sproduct-info.json' % (self.file_dir, os.sep), mode = "r")
+        self.root_product_info = json.load(f_product_info)
+        f_product_info.close()
+
+        self.product_out = self.root_product_info['product_out'] + '/'
+        self.host_out = self.root_product_info['host_out'] + '/'
 
         self.targets_etc = {}
         self.depends_etc = {}
@@ -30,42 +151,8 @@ class AndroidProduct:
 
         self.targets = {}
         self.depends = {}
-        
 
     ignore_module = ('libc', 'libc++', 'libm', 'libdl', 'libcutils', 'framework', 'ext', 'okhttp', 'core-oj', 'core-libart')
-
-    def addIndirectDepend(self, depends, base, dependant):
-        try:
-            indirect_dependants = self.root_module_deps[dependant]
-            for indirect_dependant in indirect_dependants['deps']:
-                if (depends.has_key((base, indirect_dependant))):
-                    depends[(base, indirect_dependant)] = depends[(base, indirect_dependant)] | 2
-                else:
-                    depends[(base, indirect_dependant)] = 2 #indirect dependency
-        except KeyError:
-            sys.stderr.write("Module %s is not found\n" % dependant)
-
-    def addDirectDepend(self, targets, depends, name, module):
-        try:
-            dependants = self.root_module_deps[name]
-            targets[name] = 1
-            for dependant in dependants['deps']:
-
-                if not self.root_module_info.has_key(dependant):
-                    continue
-                if len(self.root_module_info[dependant]['installed']) == 0:
-                    continue
-                if dependant in AndroidProduct.ignore_module:
-                    continue
-                    
-                targets[dependant] = 1
-                if (depends.has_key((name, dependant))):
-                    depends[(name, dependant)] = depends[(name, dependant)] | 1
-                else:
-                    depends[(name, dependant)] = 1
-                self.addIndirectDepend(depends, name, dependant)
-        except KeyError:
-            sys.stderr.write("Module %s is not found\n" % name)
 
     def outputDot(self, file, targets, depends):
         file.write('digraph {\n')
@@ -77,7 +164,6 @@ class AndroidProduct:
         k.sort()
         for m in k:
             try:
-                module = self.root_module_info[m]
                 file.write('\t\"%s\" [ label=\"%s\" colorscheme=\"svg\" fontcolor=\"darkblue\" href=\"%s\" ]\n'
                     % (m, m, m))
             except KeyError as err:
@@ -112,8 +198,8 @@ class AndroidProduct:
                 types = module['class']
                 paths = module['installed']
                 if len(types) != len(paths):
-                    sys.stderr.write("len(types) != len(paths), Module name=%s\n" % m)
-                    assert(len(types) == len(paths))
+                    sys.stderr.write("len(types) != len(paths), Module name=%s, types=%s, paths=%s\n" % (m, types, paths))
+                    assert(len(types) == len(paths) or len(types) == 1)
                 for index in range(0, len(types)):
                     file.write('%s,%s,%s,%s\n' % (m, types[index], module['path'][0], paths[index]))
             except KeyError as err:
@@ -144,33 +230,42 @@ class AndroidProduct:
         self.outputOneCsv(file_dir, 'test', self.targets_test, self.depends_test)
         self.outputOneCsv(file_dir, 'all', self.targets, self.depends)
 
-    def removeUselessTarget(self):
-        k = self.root_module_info.keys()
-        for m in k:
-            module = self.root_module_info[m]
+    def paserModules(self):
+        f_module_info = open('%s%smodule-info.json' % (self.file_dir, os.sep), mode = "r")
+        root_module_info = json.load(f_module_info)
+        f_module_info.close()
 
-            paths = module['installed']
-            module['installed'] = [path.replace(self.product_out, '') for path in paths
-             if not (path.endswith('.prof') or path.endswith('.odex') or path.endswith('.vdex') or path.endswith('art') or path.endswith('.rc') or path.endswith('64') or path.startswith('out/host'))]
-                
-            types = module['class']
-            if len(types) > 1:
-                module['class'] = [type for type in types
-                if not (type == 'STATIC_LIBRARIES')]
-            
-            if len(module['installed']) == 0:
-                self.root_module_info.pop(m)
+        self.module_map = {}
+
+        k = root_module_info.keys()
+        for name in k:
+            module = Module(self, name)
+            module.parse(root_module_info[name])
+            self.module_map[name] = module
+
+    def parseDepends(self):
+        f_module_deps = open('%s%smodule-deps.json' % (self.file_dir, os.sep), mode = "r")
+        root_module_deps = json.load(f_module_deps)
+        f_module_deps.close()
+
+        self.depends = Dependency(self)
+
+        k = root_module_deps.keys()
+        for name in k:
+            base = root_module_deps[name]
+            dependencies = base['deps']
+            if len(dependencies) > 0:
+                self.depends.parse(dependencies)
 
     def parse(self, file_dir):
-
-        self.removeUselessTarget()
+        self.paserModules()
         packages = self.root_product_info["packages"]
 
         for package_name in packages:
             if(not self.root_module_info.get(package_name)):
                 continue
 
-            if package_name in AndroidProduct.ignore_module:
+            if package_name in Product.ignore_module:
                 continue
 
             m = self.root_module_info[package_name]
@@ -205,7 +300,7 @@ def main():
             return -1
 
         sys.stderr.write('Parsing directory "%s"\n' % file_dir)
-        p = AndroidProduct(file_dir)
+        p = Product(file_dir)
         p.parse(file_dir)
 
     return 0
