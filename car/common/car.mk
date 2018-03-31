@@ -37,8 +37,8 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.type.automotive.xml:system/etc/permissions/android.hardware.type.automotive.xml
 
 # Vendor Interface Manifest
-#PRODUCT_COPY_FILES += \
-#    vendor/hlhtddx/car/common/manifest.xml:$(TARGET_COPY_OUT_VENDOR)/manifest.xml
+PRODUCT_COPY_FILES += \
+    vendor/hlhtddx/car/common/manifest.xml:$(TARGET_COPY_OUT_VENDOR)/manifest.xml
 
 PRODUCT_PROPERTY_OVERRIDES += \
     android.car.drawer.unlimited=true \
