@@ -6,9 +6,4 @@ import { Component } from '@angular/core';
   styleUrls: ['./app.component.scss']
 })
 export class AppComponent {
-  dataFiles = [
-    'product-info.json',
-    'module-info.json',
-    'module-deps.json',
-  ];
 }

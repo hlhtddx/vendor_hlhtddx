@@ -49,7 +49,12 @@ fi
 # TODO: figure out an async approch to start server first and then open browser
 # to avoid server not ready issue.
 
+if [ "simple_http_server.py" -nt "$HTTP_BASE_DIR/simple_http_server.py" ]; then
+  echo "Copy simple_http_server.py to $HTTP_BASE_DIR/simple_http_server.py ..."
+  cp "simple_http_server.py" "$HTTP_BASE_DIR/simple_http_server.py"
+fi
+
 # Start local http server.
 pushd "$HTTP_BASE_DIR" > /dev/null
-python -m http.server 8000 --bind localhost
+python simple_http_server.py
 popd > /dev/null
