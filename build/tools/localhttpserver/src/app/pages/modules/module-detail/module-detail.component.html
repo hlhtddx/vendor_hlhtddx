@@ -1,1 +1,14 @@
-<td-json-formatter *ngIf="moduleInfo" [data]="moduleInfo" [key]="moduleInfo.module_name" [levelsOpen]="1"></td-json-formatter>
+<div class="container">
+  <div class="section-title">
+    <mat-chip-list>
+      <mat-chip color="primary" selected>Module Info Details:</mat-chip>
+    </mat-chip-list>
+  </div>
+  <td-json-formatter *ngIf="moduleInfo" [data]="moduleInfo" [key]="moduleInfo.module_name" [levelsOpen]="1"></td-json-formatter>
+  <div class="section-title">
+    <mat-chip-list>
+      <mat-chip color="primary" selected>Direct dependencies of module:</mat-chip>
+    </mat-chip-list>
+  </div>
+  <td-chart [style.height.px]="800" [config]="dependencyTreeConfig" (chartClick)="onChartClick($event)"></td-chart>
+</div>
