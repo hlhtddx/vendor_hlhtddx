@@ -102,7 +102,7 @@ class Module(object):
 
     def add_single_target(self, types, paths):
         '''Multiple target paths for one type'''
-        is_32_bit = True if self.name.endswith('_32') else False
+        is_32_bit = self.name.endswith('_32')
 
         for path in paths:
             target = Target()

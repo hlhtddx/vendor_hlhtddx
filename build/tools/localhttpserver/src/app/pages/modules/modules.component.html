@@ -1,0 +1,12 @@
+<div class="search-box-container">
+    <form class="example-form">
+        <mat-form-field class="example-full-width">
+            <input type="text" #searchBox placeholder="Module key" aria-label="Module name" matInput [formControl]="myControl"
+                [matAutocomplete]="auto">
+            <mat-autocomplete #auto="matAutocomplete" [displayWith]="displayFn" (optionSelected)="moduleSelected($event)">
+                <mat-option *ngFor="let info of filteredModulesInfo | async" [value]="info">{{info.key}}</mat-option>
+            </mat-autocomplete>
+        </mat-form-field>
+    </form>
+</div>
+<router-outlet></router-outlet>
