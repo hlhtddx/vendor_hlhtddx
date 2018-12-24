@@ -71,7 +71,6 @@ export class ModulesComponent implements OnInit, OnDestroy {
 
   moduleSelected(event: MatAutocompleteSelectedEvent) {
     const moduleInfo = event.option.value;
-    // TODO: navigate to module detail page.
     this.router.navigate(['detail', moduleInfo.key], { relativeTo: this.route });
   }
 

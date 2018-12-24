@@ -306,6 +306,13 @@
   dependencies:
     tslib "^1.9.0"
 
+"@covalent/echarts@^2.0.0":
+  version "2.0.0"
+  resolved "http://registry.npm.taobao.org/@covalent/echarts/download/@covalent/echarts-2.0.0.tgz#f9400bf5c168289d75db3c0b63af594952f30263"
+  integrity sha1-+UAL9cFoKJ112zwLY69ZSVLzAmM=
+  dependencies:
+    tslib "^1.9.0"
+
 "@ngtools/webpack@7.1.4":
   version "7.1.4"
   resolved "http://registry.npm.taobao.org/@ngtools/webpack/download/@ngtools/webpack-7.1.4.tgz#632ece6ed8e05fe743554cc935be36a653376f01"
@@ -2176,6 +2183,13 @@ ecc-jsbn@~0.1.1:
   dependencies:
     jsbn "~0.1.0"
     safer-buffer "^2.1.0"
+
+echarts@^4.2.0-rc.2:
+  version "4.2.0-rc.2"
+  resolved "http://registry.npm.taobao.org/echarts/download/echarts-4.2.0-rc.2.tgz#6a98397aafa81b65cbf0bc15d9afdbfb244df91e"
+  integrity sha1-apg5eq+oG2XL8LwV2a/b+yRN+R4=
+  dependencies:
+    zrender "4.0.5"
 
 ee-first@1.1.1:
   version "1.1.1"
@@ -7583,3 +7597,8 @@ zone.js@~0.8.26:
   version "0.8.26"
   resolved "http://registry.npm.taobao.org/zone.js/download/zone.js-0.8.26.tgz#7bdd72f7668c5a7ad6b118148b4ea39c59d08d2d"
   integrity sha1-e91y92aMWnrWsRgUi06jnFnQjS0=
+
+zrender@4.0.5:
+  version "4.0.5"
+  resolved "http://registry.npm.taobao.org/zrender/download/zrender-4.0.5.tgz#6e8f738971ce2cd624aac82b2156729b1c0e5a82"
+  integrity sha1-bo9ziXHOLNYkqsgrIVZymxwOWoI=
