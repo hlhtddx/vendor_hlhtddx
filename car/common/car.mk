@@ -32,13 +32,9 @@ PRODUCT_COPY_FILES += \
 
 # Overwrite handheld_core_hardware.xml with a dummy config.
 PRODUCT_COPY_FILES += \
-    vendor/hlhtddx/car/common/android.hardware.dummy.xml:system/etc/permissions/handheld_core_hardware.xml \
     vendor/hlhtddx/car/common/car_core_hardware.xml:system/etc/permissions/car_core_hardware.xml \
     frameworks/native/data/etc/android.hardware.type.automotive.xml:system/etc/permissions/android.hardware.type.automotive.xml
 
-# Vendor Interface Manifest
-#PRODUCT_COPY_FILES += \
-#    vendor/hlhtddx/car/common/manifest.xml:$(TARGET_COPY_OUT_VENDOR)/manifest.xml
 
 PRODUCT_PROPERTY_OVERRIDES += \
     android.car.drawer.unlimited=true \
@@ -49,7 +45,6 @@ TARGET_USES_CAR_FUTURE_FEATURES := true
 
 # Add car related sepolicy.
 BOARD_SEPOLICY_DIRS += \
-    vendor/hlhtddx/car/common/sepolicy \
     packages/services/Car/car_product/sepolicy
 
 $(call inherit-product, packages/services/Car/car_product/build/car.mk)
